@@ -145,6 +145,8 @@ Because operations are applied to a cloned working document, the resulting JSON 
 
 GitHub Actions runs the same checks on every push and pull request via `.github/workflows/ci.yml`. The workflow uses `npm ci`, executes `npm run check`, and builds the production bundles on Node.js 18.x and 20.x.
 
+Published GitHub releases automatically trigger `.github/workflows/release.yml`, which repeats the checks and runs `npm publish --access public`. Store an npm automation token in the repository secret `NPM_TOKEN` before tagging a release.
+
 ## License
 
 MIT
