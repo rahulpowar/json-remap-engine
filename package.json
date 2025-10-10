@@ -1,6 +1,6 @@
 {
   "name": "json-remap-engine",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "JSONPath-driven remapping engine that produces JSON Patch operations.",
   "type": "module",
   "main": "./dist/index.cjs",
