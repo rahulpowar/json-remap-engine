@@ -48,6 +48,76 @@ console.log(document);   // transformed JSON
 console.log(operations); // JSON Patch operations that were applied
 ```
 
+## Example transformation
+
+This sample applies every rule type, including an in-place rename that derives its new key from the matched object.
+
+**Source JSON**
+
+```json
+{
+  "summary": {
+    "status": "draft",
+    "services": [
+      {
+        "service": { "id": "svc-001", "description": "" },
+        "metadata": { "alias": "service_now" },
+        "analytics": { "hits": 0 }
+      }
+    ]
+  },
+  "legacyTitle": "Legacy release name"
+}
+```
+
+**Rules** (assuming the helper factories are imported from `json-remap-engine`)
+
+```ts
+const source = /* JSON from the previous block */;
+
+const rules = [
+  createReplaceRule("$.summary.status", "published", { id: "publish-status" }),
+  createRenameRule("$.summary.services[*].service", "$.metadata.alias", {
+    id: "rename-service",
+    targetMode: "jsonpath",
+  }),
+  createRemoveRule("$.summary.services[*].analytics", { id: "drop-analytics" }),
+  createMoveRule("$.legacyTitle", "/summary/title", { id: "hoist-title" }),
+];
+
+const { document, operations } = runTransformer(source, rules);
+```
+
+**Transformed document**
+
+```json
+{
+  "summary": {
+    "status": "published",
+    "services": [
+      {
+        "service_now": { "id": "svc-001", "description": "" },
+        "metadata": { "alias": "service_now" }
+      }
+    ],
+    "title": "Legacy release name"
+  }
+}
+```
+
+**Patch operations**
+
+```json
+[
+  { "op": "replace", "path": "/summary/status", "value": "published" },
+  { "op": "move", "from": "/summary/services/0/service", "path": "/summary/services/0/service_now" },
+  { "op": "remove", "path": "/summary/services/0/analytics" },
+  { "op": "move", "from": "/legacyTitle", "path": "/summary/title" }
+]
+```
+
+The rename rule runs against each service object. The JSONPath `$.metadata.alias` is resolved relative to the matched object, so array indices never leak into the expression, and the emitted patch still uses the standard `move` operation.
+
 ## Why another JSON remapping approach?
 
 - There is no single, standards-track "XSLT for JSON." Specs such as JSONPath, JSON Pointer, and JSON Patch solve slices of the problem, but teams still resort to bespoke remapping glue.
@@ -75,6 +145,7 @@ The helper factories mirror the original UI defaults and add a few ergonomics fo
 | `createRemoveRule(matcher, options)` | Removes every JSONPath match | `allowEmptyMatcher=false` |
 | `createReplaceRule(matcher, value, options)` | Replaces each match with a literal value or another JSONPath value | `valueMode="auto"` detects JSONPath when strings start with `$`; pass `valueMode: "literal"` to keep strings like `"$100"` |
 | `createMoveRule(matcher, target, options)` | Moves the source match to the `target` (JSON Pointer by default) | `targetMode="auto"` interprets leading `/` as JSON Pointer, leading `$` as JSONPath |
+| `createRenameRule(matcher, target, options)` | Renames object property keys in place | `targetMode="auto"` treats `$`/`@` prefixes as parent-scoped JSONPath; literal strings are trimmed and applied directly |
 
 For full control you can construct `Rule` objects manually.
 
@@ -120,6 +191,10 @@ Additional helpers are exported for converting between analysis paths, JSONPath,
 
 These utilities are reused internally when resolving move targets but exposed for downstream tooling.
 
+## JSON Schema
+
+A machine-readable definition of the rule format lives at `docs/rules.schema.json`. The file targets JSON Schema Draft 2020-12 and advertises its `$id` as `https://json-remap-engine.dev/schemas/rules.schema.json` so external tooling can `$ref` it directly.
+
 ## Known limitations & compatibility notes
 
 - Replacement strings that start with `$` are treated as JSONPath expressions by default. Use `valueMode: "literal"` when you need the literal `$` prefix.
@@ -130,7 +205,7 @@ These utilities are reused internally when resolving move targets but exposed fo
 
 ## JSON Patch compliance
 
-The engine emits only `remove`, `replace`, and `move` operations and applies them using the pointer semantics from [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) and [RFC 6901](https://datatracker.ietf.org/doc/html/rfc6901):
+The engine emits only `remove`, `replace`, and `move` operations and applies them using the pointer semantics from [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) and [RFC 6901](https://datatracker.ietf.org/doc/html/rfc6901). Rename rules lower to JSON Patch `move` operations so downstream tooling remains fully compliant:
 
 - `remove` requires the pointer to resolve and executes array deletions in descending index order to preserve RFC removal guarantees.
 - `replace` requires the pointer to resolve before overwriting, mirroring the RFC requirement to test existence first.

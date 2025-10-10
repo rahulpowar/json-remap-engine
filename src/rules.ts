@@ -1,4 +1,4 @@
-import type { MoveRule, RemoveRule, ReplaceRule } from "./transformer";
+import type { MoveRule, RemoveRule, RenameRule, ReplaceRule } from "./transformer";
 
 type RuleBaseOptions = {
   /**
@@ -31,6 +31,13 @@ type MoveRuleOptions = RuleBaseOptions & {
    * Force the target to be treated as a JSON Pointer. Defaults to auto-detecting JSON Pointer vs JSONPath.
    */
   targetMode?: "auto" | "pointer" | "jsonpath";
+};
+
+type RenameRuleOptions = RuleBaseOptions & {
+  /**
+   * Controls how rename targets are interpreted. Defaults to auto-detecting JSONPath vs literal.
+   */
+  targetMode?: "auto" | "literal" | "jsonpath";
 };
 
 /**
@@ -106,6 +113,33 @@ export const createMoveRule = (
     id,
     matcher,
     op: "move",
+    target,
+    allowEmptyMatcher,
+    allowEmptyValue,
+    disabled,
+    targetMode,
+  };
+};
+
+/**
+ * Creates a rename rule that relabels object properties in place.
+ */
+export const createRenameRule = (
+  matcher: string,
+  target: string,
+  options: RenameRuleOptions = {},
+): RenameRule => {
+  const {
+    id = generateRuleId(),
+    allowEmptyMatcher = false,
+    allowEmptyValue = false,
+    disabled = false,
+    targetMode = "auto",
+  } = options;
+  return {
+    id,
+    matcher,
+    op: "rename",
     target,
     allowEmptyMatcher,
     allowEmptyValue,

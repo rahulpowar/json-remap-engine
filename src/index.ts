@@ -5,6 +5,7 @@ export {
   type RemoveRule,
   type ReplaceRule,
   type MoveRule,
+  type RenameRule,
   type RuleDiagnostic,
   type RuleOperationDiagnostic,
   type TransformerResult,
@@ -12,7 +13,7 @@ export {
   type Op,
 } from "./transformer";
 
-export { createRemoveRule, createReplaceRule, createMoveRule, generateRuleId } from "./rules";
+export { createRemoveRule, createReplaceRule, createMoveRule, createRenameRule, generateRuleId } from "./rules";
 
 export {
   analysisPathToJsonPath,

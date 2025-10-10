@@ -2,7 +2,7 @@ import { JSONPath } from "jsonpath-plus";
 
 import { decodePointerToken, encodePointerToken, simpleJsonPathToPointer } from "./path-utils";
 
-export type Op = "remove" | "replace" | "move";
+export type Op = "remove" | "replace" | "move" | "rename";
 
 interface RuleBase {
   id: string;
@@ -30,7 +30,14 @@ export interface MoveRule extends RuleBase {
   targetMode?: "auto" | "pointer" | "jsonpath";
 }
 
-export type Rule = RemoveRule | ReplaceRule | MoveRule;
+export interface RenameRule extends RuleBase {
+  op: "rename";
+  target: string;
+  /** Controls how rename targets are interpreted. */
+  targetMode?: "auto" | "literal" | "jsonpath";
+}
+
+export type Rule = RemoveRule | ReplaceRule | MoveRule | RenameRule;
 
 export type JsonPatchOperation =
   | { op: "remove"; path: string }
@@ -377,6 +384,75 @@ const resolveTargetPointer = (document: unknown, rule: MoveRule): string | null 
   throw new Error("Target must start with '/' for JSONPointer or '$' for JSONPath");
 };
 
+const resolveRenameTargetPointer = (document: unknown, pointer: string, rule: RenameRule): string | null => {
+  const { parent, key } = getParentContext(document, pointer);
+  if (parent === null || key === null) {
+    throw new Error("Cannot rename the root document");
+  }
+  if (Array.isArray(parent)) {
+    throw new Error("Rename operations can only target object properties");
+  }
+  const trimmedTarget = (rule.target ?? "").trim();
+  if (!trimmedTarget) {
+    if (rule.allowEmptyValue) {
+      return null;
+    }
+    throw new Error("Rename operations require a target key or JSONPath");
+  }
+
+  const coerceKey = (value: unknown): string => {
+    if (typeof value !== "string") {
+      throw new Error("Rename target must resolve to a string key");
+    }
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new Error("Rename target must be a non-empty string");
+    }
+    return normalized;
+  };
+
+  let nextKey: string | null;
+
+  if (rule.targetMode === "literal") {
+    nextKey = coerceKey(trimmedTarget);
+  } else if (rule.targetMode === "jsonpath" || trimmedTarget.startsWith("$") || trimmedTarget.startsWith("@")) {
+    const resolved = JSONPath({ path: trimmedTarget, json: parent as JsonLike, resultType: "value" });
+    const values = Array.isArray(resolved) ? resolved : [resolved];
+    const definedValues = values.filter((candidate) => candidate !== undefined);
+    if (definedValues.length === 0) {
+      if (rule.allowEmptyValue) {
+        return null;
+      }
+      throw new Error(`Expected JSONPath '${rule.target}' to resolve to exactly one string key`);
+    }
+    if (definedValues.length !== 1) {
+      throw new Error(`Expected JSONPath '${rule.target}' to resolve to exactly one string key but received ${definedValues.length}`);
+    }
+    nextKey = coerceKey(definedValues[0]);
+  } else {
+    nextKey = coerceKey(trimmedTarget);
+  }
+
+  if (nextKey === null) {
+    return null;
+  }
+
+  assertSafePointerKey(nextKey);
+
+  if (nextKey === key) {
+    return null;
+  }
+
+  if (hasOwn(parent as Record<string, unknown>, nextKey)) {
+    throw new Error(`Property '${nextKey}' already exists on the target object`);
+  }
+
+  const parentTokens = splitPointer(pointer).slice(0, -1);
+  const nextPointer = joinPointer([...parentTokens, nextKey]);
+  ensurePointerSafety(nextPointer);
+  return nextPointer;
+};
+
 const applyOperation = (document: unknown, operation: JsonPatchOperation) => {
   switch (operation.op) {
     case "remove":
@@ -488,6 +564,31 @@ export const runTransformer = (input: unknown, rules: Rule[]): TransformerResult
             return;
           }
           ruleErrors.push(`Rule ${ruleIndex + 1} replace value error: ${message}`);
+        }
+        return;
+      }
+
+      if (rule.op === "rename") {
+        try {
+          const targetPointer = resolveRenameTargetPointer(workingDocument, pointer, rule);
+          if (targetPointer === null) {
+            suppressNoOpWarning = true;
+            return;
+          }
+          operations.push({
+            matchIndex,
+            pointer,
+            op: "rename",
+            summary: { op: "move", from: pointer, path: targetPointer },
+            status: "skipped",
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (rule.allowEmptyValue && message.includes("resolve to exactly one string key")) {
+            suppressNoOpWarning = true;
+            return;
+          }
+          ruleErrors.push(`Rule ${ruleIndex + 1} rename target error: ${message}`);
         }
         return;
       }

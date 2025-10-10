@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMoveRule,
   createRemoveRule,
+  createRenameRule,
   createReplaceRule,
   formatPatch,
   runTransformer,
@@ -77,6 +78,80 @@ describe("runTransformer", () => {
     expect(result.operations).toEqual([
       { op: "move", from: "/draft/body", path: "/published/body" },
     ]);
+  });
+
+  it("renames object keys with literal targets", () => {
+    const source = {
+      summary: {
+        services: [
+          { service: { id: "a1" }, metadata: { alias: "service_now" } },
+        ],
+      },
+    };
+    const rules: Rule[] = [
+      createRenameRule("$.summary.services[*].service", "service_now", { id: "rename-service" }),
+    ];
+
+    const result = runTransformer(source, rules);
+    expect(result.ok).toBe(true);
+    expect(result.document).toEqual({
+      summary: {
+        services: [
+          { service_now: { id: "a1" }, metadata: { alias: "service_now" } },
+        ],
+      },
+    });
+    expect(result.operations).toEqual([
+      { op: "move", from: "/summary/services/0/service", path: "/summary/services/0/service_now" },
+    ]);
+  });
+
+  it("derives rename targets via relative JSONPath", () => {
+    const source = {
+      summary: {
+        services: [
+          { service: { id: "a1" }, metadata: { safeName: "svc_a1" } },
+        ],
+      },
+    };
+    const rules: Rule[] = [
+      createRenameRule("$.summary.services[*].service", "$.metadata.safeName", {
+        id: "rename-dynamic",
+        targetMode: "jsonpath",
+      }),
+    ];
+
+    const result = runTransformer(source, rules);
+    expect(result.ok).toBe(true);
+    expect(result.document).toEqual({
+      summary: {
+        services: [
+          { svc_a1: { id: "a1" }, metadata: { safeName: "svc_a1" } },
+        ],
+      },
+    });
+    expect(result.operations).toEqual([
+      { op: "move", from: "/summary/services/0/service", path: "/summary/services/0/svc_a1" },
+    ]);
+  });
+
+  it("prevents rename when the new key already exists", () => {
+    const source = {
+      summary: {
+        services: [
+          { service: { id: "a1" }, service_now: { id: "legacy" } },
+        ],
+      },
+    };
+    const rules: Rule[] = [
+      createRenameRule("$.summary.services[*].service", "service_now", { id: "rename-clash" }),
+    ];
+
+    const result = runTransformer(source, rules);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((message) => message.includes("rename target error"))).toBe(true);
+    expect(result.operations).toEqual([]);
+    expect(result.document).toEqual(source);
   });
 
   it("forces JSONPath evaluation when targetMode=jsonpath", () => {

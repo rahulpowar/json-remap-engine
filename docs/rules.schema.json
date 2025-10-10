@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json-remap-engine.dev/schemas/rules.schema.json",
+  "title": "json-remap-engine Rule Set",
+  "description": "Declarative rules consumed by json-remap-engine to generate JSON Patch operations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rules"],
+  "properties": {
+    "rules": {
+      "type": "array",
+      "description": "Ordered rules executed sequentially against the input document.",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "removeRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher", "op"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier used when emitting diagnostics."
+        },
+        "matcher": {
+          "type": "string",
+          "description": "JSONPath expression evaluated against the working document."
+        },
+        "op": {
+          "const": "remove",
+          "description": "Removes each matched pointer from the document."
+        },
+        "allowEmptyMatcher": {
+          "type": "boolean",
+          "default": false,
+          "description": "Silence the warning emitted when the matcher resolves to zero pointers."
+        },
+        "allowEmptyValue": {
+          "type": "boolean",
+          "default": false,
+          "description": "No-op hint for compatibility with the base rule model."
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip rule execution while keeping it in diagnostics."
+        }
+      }
+    },
+    "replaceRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher", "op", "value"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "matcher": {
+          "type": "string"
+        },
+        "op": {
+          "const": "replace"
+        },
+        "value": {
+          "description": "Replacement payload or JSONPath expression evaluated per match."
+        },
+        "valueMode": {
+          "type": "string",
+          "enum": ["auto", "literal"],
+          "default": "auto",
+          "description": "Force literal handling or enable automatic JSONPath detection for string values."
+        },
+        "allowEmptyMatcher": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowEmptyValue": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip execution when the replacement value resolves to undefined."
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "moveRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher", "op", "target"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "matcher": {
+          "type": "string"
+        },
+        "op": {
+          "const": "move"
+        },
+        "target": {
+          "type": "string",
+          "description": "JSON Pointer or JSONPath that resolves to the destination."
+        },
+        "targetMode": {
+          "type": "string",
+          "enum": ["auto", "pointer", "jsonpath"],
+          "default": "auto"
+        },
+        "allowEmptyMatcher": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowEmptyValue": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip the move when the target JSONPath resolves to zero pointers."
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "renameRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher", "op", "target"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "matcher": {
+          "type": "string"
+        },
+        "op": {
+          "const": "rename",
+          "description": "Relabels the final token of each matched JSON Pointer."
+        },
+        "target": {
+          "type": "string",
+          "description": "Literal key name or JSONPath (relative to the parent object) that resolves to the new key."
+        },
+        "targetMode": {
+          "type": "string",
+          "enum": ["auto", "literal", "jsonpath"],
+          "default": "auto"
+        },
+        "allowEmptyMatcher": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowEmptyValue": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip the rename when the JSONPath target cannot resolve to a string."
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "rule": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/removeRule"
+        },
+        {
+          "$ref": "#/$defs/replaceRule"
+        },
+        {
+          "$ref": "#/$defs/moveRule"
+        },
+        {
+          "$ref": "#/$defs/renameRule"
+        }
+      ]
+    }
+  }
+}

@@ -16,14 +16,14 @@ Rules are discriminated by the `op` field:
 | --- | --- | --- | --- |
 | `id` | `string` | all | Required stable identifier for diagnostics. When omitted, helpers generate `r-<hex>` ids. |
 | `matcher` | `string` | all | JSONPath expression evaluated via `jsonpath-plus`. Trims surrounding whitespace. |
-| `op` | `'remove' \| 'replace' \| 'move'` | all | Operation performed for each matching pointer. |
+| `op` | `'remove' \| 'replace' \| 'move' \| 'rename'` | all | Operation performed for each matching pointer. |
 | `allowEmptyMatcher` | `boolean` (default `false`) | all | Silences the “No matches produced patch operations” warning when the matcher yields no results. |
-| `allowEmptyValue` | `boolean` (default `false`) | replace/move | Allows an empty/`undefined` replacement or target resolution without raising an error. For move rules, an empty JSONPath target now skips the operation instead of failing. |
+| `allowEmptyValue` | `boolean` (default `false`) | replace/move/rename | Allows an empty/`undefined` replacement, target, or rename key resolution without raising an error. Move and rename rules skip execution when a JSONPath target produces zero results and the flag is enabled. |
 | `disabled` | `boolean` (default `false`) | all | When `true`, the rule is skipped but still reported in diagnostics. |
 | `value` | `unknown` | replace | Replacement payload. When `valueMode` is `'auto'` (default) and `value` is a string that starts with `$`, it is interpreted as a JSONPath expression. |
 | `valueMode` | `'auto' \| 'literal'` (default `'auto'`) | replace | Overrides JSONPath detection. `'literal'` forces direct usage of `value`, enabling strings like `$100`. |
-| `target` | `string` | move | Destination pointer or JSONPath. |
-| `targetMode` | `'auto' \| 'pointer' \| 'jsonpath'` (default `'auto'`) | move | Forces the engine to treat `target` as a JSON Pointer (`'/foo/0'`) or JSONPath (`'$.foo[0]'`). In auto mode the prefix decides. |
+| `target` | `string` | move/rename | For move rules, the destination pointer or JSONPath. For rename rules, the literal key name or JSONPath that resolves to the replacement key. |
+| `targetMode` | `'auto' \| 'pointer' \| 'jsonpath'` (move) / `'auto' \| 'literal' \| 'jsonpath'` (rename) | move/rename | Move rules force pointer vs JSONPath interpretation. Rename rules switch between literal keys and parent-scoped JSONPath evaluation. |
 
 Helpers in `src/rules.ts` construct correctly typed rules with sane defaults.
 
@@ -42,10 +42,15 @@ Helpers in `src/rules.ts` construct correctly typed rules with sane defaults.
    - Explicit `targetMode: 'jsonpath'` → JSONPath pointer resolution (must yield exactly one result).
    - Auto mode uses the prefix heuristic (`/` for pointer, `$` for JSONPath). If a JSONPath yields zero pointers and `allowEmptyValue` is `true`, the move is skipped. Otherwise, a “simple path to pointer” heuristic is attempted for expressions using only dot/bracket/index selectors.
    - Pointers containing `__proto__`, `constructor`, or `prototype` segments are rejected before staging operations.
-6. **Remove ordering.** Within each rule, staged `remove` operations are reordered so array indices are processed from highest to lowest for the same parent pointer.
-7. **Execution.** Operations execute in staged order. Failures (e.g., pointer missing after a previous mutation) mark the operation as `skipped`, append error messages, and leave the working document unchanged. Successful operations are appended to the `operations` array in applied order with their final JSON Patch summaries.
-8. **Warnings.** If a rule produced no operations, no matches, and no errors, the rule emits a `"No matches produced patch operations"` warning unless suppressed via `allowEmptyMatcher` or skipped because of empty value allowances.
-9. **Result aggregation.** `ok` is `true` when the aggregated error list is empty. Diagnostics are returned for each rule, regardless of enablement or success.
+6. **Rename target resolution.** Rename rules derive replacement keys per pointer:
+   - `targetMode: 'literal'` or strings without a `$`/`@` prefix are trimmed and used directly.
+   - `targetMode: 'jsonpath'` or strings beginning with `$`/`@` evaluate JSONPath against the parent object. Exactly one string result is required; zero results honour `allowEmptyValue`.
+   - Existing sibling keys or unsafe pointer segments trigger descriptive errors before operations are staged.
+   Rename diagnostics record the logical `rename` op while the emitted patch summary remains a JSON Patch `move` operation.
+7. **Remove ordering.** Within each rule, staged `remove` operations are reordered so array indices are processed from highest to lowest for the same parent pointer.
+8. **Execution.** Operations execute in staged order. Failures (e.g., pointer missing after a previous mutation) mark the operation as `skipped`, append error messages, and leave the working document unchanged. Successful operations are appended to the `operations` array in applied order with their final JSON Patch summaries.
+9. **Warnings.** If a rule produced no operations, no matches, and no errors, the rule emits a `"No matches produced patch operations"` warning unless suppressed via `allowEmptyMatcher` or skipped because of empty value allowances.
+10. **Result aggregation.** `ok` is `true` when the aggregated error list is empty. Diagnostics are returned for each rule, regardless of enablement or success.
 
 ## Diagnostics Structure
 
@@ -53,7 +58,7 @@ Helpers in `src/rules.ts` construct correctly typed rules with sane defaults.
 interface RuleOperationDiagnostic {
   matchIndex: number;      // 0-based index of the match inside the rule
   pointer: string;         // JSON Pointer produced by the matcher
-  op: 'remove' | 'replace' | 'move';
+  op: 'remove' | 'replace' | 'move' | 'rename';
   summary: JsonPatchOperation;
   status: 'applied' | 'skipped';
   message?: string;        // populated when status === 'skipped'
@@ -62,7 +67,7 @@ interface RuleOperationDiagnostic {
 interface RuleDiagnostic {
   ruleId: string;
   matcher: string;
-  op: 'remove' | 'replace' | 'move';
+  op: 'remove' | 'replace' | 'move' | 'rename';
   matchCount: number;
   operations: RuleOperationDiagnostic[];
   errors: string[];
@@ -75,7 +80,7 @@ The top-level `errors` and `warnings` arrays flatten the respective fields from 
 ## Security Hardening
 
 - Pointer traversal treats only own enumerable properties as valid JSON members. Prototype properties such as `toString` are ignored.
-- Mutating operations (`replace`, `move`, and implicit writes during `add`) reject pointer segments named `__proto__`, `constructor`, or `prototype` to prevent prototype pollution.
+- Mutating operations (`replace`, `move`, `rename`, and implicit writes during `add`) reject pointer segments named `__proto__`, `constructor`, or `prototype` to prevent prototype pollution.
 - Move rules with `allowEmptyValue: true` skip execution when their target JSONPath resolves to zero pointers, avoiding accidental creation of unsafe placeholder paths.
 
 ## JSON Pointer Utilities
@@ -87,6 +92,10 @@ The top-level `errors` and `warnings` arrays flatten the respective fields from 
 - `pointerExists` / `getValueAtPointerSafe` provide safe traversal checks without throwing and ignore inherited prototype members.
 - `simpleJsonPathToPointer` attempts to convert plain JSONPath access patterns to pointers (`$.foo.bar[0]` → `/foo/bar/0`). This enables move targets to be declared via JSONPath even when the destination does not yet exist.
 
+## JSON Schema
+
+`docs/rules.schema.json` ships a JSON Schema Draft 2020-12 definition for rule collections, mirroring the four supported operations (`remove`, `replace`, `move`, `rename`). The schema advertises its `$id` as `https://json-remap-engine.dev/schemas/rules.schema.json` so external tooling can reference it directly.
+
 ## Error Messaging
 
 The engine throws no errors itself; instead it captures and records human-readable messages. Notable messages include:
@@ -95,6 +104,7 @@ The engine throws no errors itself; instead it captures and records human-readab
 - `"Rule <index> (<op>) matcher error: …"` with the underlying JSONPath exception, plus advice when accessing undefined properties inside filters.
 - `"Rule <index> replace value error: Expected exactly one value for JSONPath '$.foo', received <n>"` when a replacement JSONPath is ambiguous.
 - `"Rule <index> move target error: Expected exactly one target pointer for JSONPath '$.foo', received <n>"` when move destinations misbehave.
+- `"Rule <index> rename target error: …"` when rename key resolution fails, including collisions with sibling keys or unsafe pointer segments.
 - `"Remove /path failed: …"`, `"Replace /path failed: …"`, `"Move /path failed: …"` for runtime pointer issues (e.g., concurrent modifications).
 
 Consumers can rely on these messages to guide users without duplicating parsing logic.
