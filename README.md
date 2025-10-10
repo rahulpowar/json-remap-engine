@@ -1,5 +1,9 @@
 # json-remap-engine
 
+[![npm version](https://img.shields.io/npm/v/json-remap-engine)](https://www.npmjs.com/package/json-remap-engine)
+[![npm downloads](https://img.shields.io/npm/dm/json-remap-engine)](https://www.npmjs.com/package/json-remap-engine)
+[![license](https://img.shields.io/npm/l/json-remap-engine)](LICENSE)
+
 A lightweight, fully client-side rules engine that rewrites JSON documents by evaluating [JSONPath](https://datatracker.ietf.org/doc/html/draft-ietf-jsonpath-base) matchers and producing [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations. The core logic is extracted from Token Tamer and packaged for reuse in build scripts, CLIs, and browser applications.
 
 - 💡 **JSONPath matchers** decide which values to prune, replace, or move.
