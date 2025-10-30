@@ -148,6 +148,8 @@ These tools are powerful but ship larger interpreters and opinionated runtimes. 
 
 The helper factories mirror the original UI defaults and add a few ergonomics for library consumers. All helpers accept an optional options object with `id`, `allowEmptyMatcher`, `allowEmptyValue`, and `disabled` flags. When using move rules, `allowEmptyValue: true` now treats unresolved targets as a no-op instead of producing an error.
 
+Prefer a visual workflow? Use the rule builder at https://tokentamer.app to author rules and export them for use with this library.
+
 | Helper | Purpose | Key defaults |
 | --- | --- | --- |
 | `createRemoveRule(matcher, options)` | Removes every JSONPath match | `allowEmptyMatcher=false` |
@@ -223,6 +225,13 @@ const { output } = runTransformer(input, rules, { encoding: OutputEncoding.Toon,
 console.log(OutputEncodingDescription.Toon); // "TOON text format using @byjohann/toon."
 ```
 
+## Languages
+
+| Language | Package | Install | Notes |
+| --- | --- | --- | --- |
+| JavaScript / TypeScript | npm: [json-remap-engine](https://www.npmjs.com/package/json-remap-engine) | `npm i json-remap-engine` | Core library. ESM/CJS bundles with TypeScript types; JSONPath matchers → JSON Patch ops; optional encoded output (JSON/TOON). |
+| Python | PyPI: [json-remap-engine](https://pypi.org/project/json-remap-engine/) | `pip install json-remap-engine` | Companion implementation for scripts/CI. Focused on the same rule model (remove/replace/move/rename) and diagnostics. |
+
 ## JSON Schema
 
 A machine-readable definition of the rule format lives at `docs/rules.schema.json`. The file targets JSON Schema Draft 2020-12 and advertises its `$id` as `https://json-remap-engine.dev/schemas/rules.schema.json` so external tooling can `$ref` it directly.
@@ -256,7 +265,7 @@ Because operations are applied to a cloned working document, the resulting JSON 
 
 GitHub Actions runs the same checks on every push and pull request via `.github/workflows/ci.yml`. The workflow uses `npm ci`, executes `npm run check`, and builds the production bundles on Node.js 18.x and 20.x.
 
-Published GitHub releases automatically trigger `.github/workflows/release.yml`, which repeats the checks and runs `npm publish --access public`. Store an npm automation token in the repository secret `NPM_TOKEN` before tagging a release.
+Published GitHub releases automatically trigger `.github/workflows/release.yml`, which repeats the checks and runs `npm publish --access public`.
 
 ## License
 
