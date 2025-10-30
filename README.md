@@ -9,6 +9,7 @@ A lightweight, fully client-side rules engine that rewrites JSON documents by ev
 - 💡 **JSONPath matchers** decide which values to prune, replace, or move.
 - 🩺 **Rich diagnostics** list every rule, match, and warning so you can render UI feedback or fail builds.
 - 🛠️ **JSON Patch output** (`remove`, `replace`, `move`) lets you persist the changes or run them through existing patch tools.
+- 🧾 **TOON text output (optional)** – render the transformed JSON as compact human-readable text using [`@byjohann/toon`](https://github.com/johannschopplich/toon) with sensible defaults.
 - 📦 **Framework agnostic** – ships as ESM and CJS bundles with TypeScript declarations.
 
 ## Installation
@@ -27,6 +28,9 @@ import {
   createRemoveRule,
   createReplaceRule,
   createMoveRule,
+  encodeToToon,
+  OutputEncoding,
+  type EncodeOptions,
 } from "json-remap-engine";
 
 const rules = [
@@ -46,6 +50,10 @@ if (!ok) {
 
 console.log(document);   // transformed JSON
 console.log(operations); // JSON Patch operations that were applied
+
+// Optional: encoded output via the same function
+const encoded = runTransformer(input, rules, { encoding: OutputEncoding.Toon });
+console.log(encoded.output); // TOON text (tab-delimited, '#' length marker by default)
 ```
 
 ## Example transformation
@@ -190,6 +198,30 @@ Additional helpers are exported for converting between analysis paths, JSONPath,
 - `simpleJsonPathToPointer("$.problematic_tests[?(@.inspection && @.inspection.meta && @.inspection.meta.status == 'OK')].inspection") // => null (requires guarded access to avoid runtime errors)`
 
 These utilities are reused internally when resolving move targets but exposed for downstream tooling.
+
+## Encoded output (JSON or TOON)
+
+The library can optionally return a [TOON](https://github.com/johannschopplich/toon) representation of the transformed document.
+
+- `encodeToToon(value, options?)` – encode any JSON-compatible value.
+- `runTransformer(input, rules, { encoding })` – parameterize output encoding while keeping the same API. Use `OutputEncoding.JsonPretty`, `OutputEncoding.JsonCompact`, or `OutputEncoding.Toon`.
+
+Defaults (`EncodeOptions`) favor compact readability:
+
+```ts
+import { defaultToonOptions, OutputEncodingDescription, type EncodeOptions } from "json-remap-engine";
+// defaultToonOptions = { delimiter: "\t", indent: 2, lengthMarker: "#" }
+```
+
+You can override options and the types are re-exported for convenience:
+
+```ts
+const options: EncodeOptions = { delimiter: "|", indent: 2 };
+const { output } = runTransformer(input, rules, { encoding: OutputEncoding.Toon, toonOptions: options });
+
+// Use descriptions for UI selections
+console.log(OutputEncodingDescription.Toon); // "TOON text format using @byjohann/toon."
+```
 
 ## JSON Schema
 

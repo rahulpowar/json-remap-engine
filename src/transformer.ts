@@ -1,4 +1,5 @@
 import { JSONPath } from "jsonpath-plus";
+import { encodeToToon, defaultToonOptions, type EncodeOptions } from "./toon";
 
 import { decodePointerToken, encodePointerToken, simpleJsonPathToPointer } from "./path-utils";
 
@@ -82,6 +83,57 @@ export interface TransformerResult {
   diagnostics: RuleDiagnostic[];
   errors: string[];
   warnings: string[];
+}
+
+/**
+ * Self-documenting encoding enum for the runTransformer output stream.
+ */
+export const OutputEncoding = {
+  /**
+   * Human-friendly JSON with indentation (default).
+   * @example
+   * const res = runTransformer(input, rules, { encoding: OutputEncoding.JsonPretty })
+   * console.log(res.output) // Pretty JSON
+   */
+  JsonPretty: "json-pretty",
+
+  /**
+   * Compact/minified JSON without extra whitespace.
+   * @example
+   * const res = runTransformer(input, rules, { encoding: OutputEncoding.JsonCompact })
+   * console.log(res.output) // Minified JSON
+   */
+  JsonCompact: "json-compact",
+
+  /**
+   * TOON text, a readable tabular format powered by @byjohann/toon.
+   * @example
+   * const res = runTransformer(input, rules, { encoding: OutputEncoding.Toon })
+   * console.log(res.output) // TOON text
+   */
+  Toon: "toon",
+} as const;
+
+export type OutputEncoding = typeof OutputEncoding[keyof typeof OutputEncoding];
+
+/** Human-readable descriptions for each encoding. */
+export const OutputEncodingDescription: Record<OutputEncoding, string> = {
+  [OutputEncoding.JsonPretty]: "Human-friendly JSON with indentation.",
+  [OutputEncoding.JsonCompact]: "Minified JSON without whitespace.",
+  [OutputEncoding.Toon]: "TOON text format using @byjohann/toon.",
+};
+
+export interface EncodedOutput {
+  output: string;
+  encoding: OutputEncoding;
+  contentType: "application/json" | "text/plain";
+}
+
+export interface RunTransformerOptions {
+  /** Output encoding for the returned `output` string. Defaults to `OutputEncoding.JsonPretty`. */
+  encoding?: OutputEncoding;
+  jsonIndent?: number;       // default 2 when encoding is json-pretty
+  toonOptions?: EncodeOptions; // options forwarded to TOON encoder
 }
 
 const cloneValue = <T>(input: T): T => {
@@ -470,7 +522,17 @@ const applyOperation = (document: unknown, operation: JsonPatchOperation) => {
   }
 };
 
-export const runTransformer = (input: unknown, rules: Rule[]): TransformerResult => {
+export function runTransformer(input: unknown, rules: Rule[]): TransformerResult;
+export function runTransformer(
+  input: unknown,
+  rules: Rule[],
+  options: RunTransformerOptions,
+): TransformerResult & EncodedOutput;
+export function runTransformer(
+  input: unknown,
+  rules: Rule[],
+  options?: RunTransformerOptions,
+): TransformerResult | (TransformerResult & EncodedOutput) {
   const diagnostics: RuleDiagnostic[] = [];
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -678,7 +740,7 @@ export const runTransformer = (input: unknown, rules: Rule[]): TransformerResult
     ruleWarnings.forEach((warning) => warnings.push(warning));
   });
 
-  return {
+  const base: TransformerResult = {
     ok: errors.length === 0,
     document: workingDocument,
     operations: appliedOperations,
@@ -686,7 +748,21 @@ export const runTransformer = (input: unknown, rules: Rule[]): TransformerResult
     errors,
     warnings,
   };
-};
+  const encoding: OutputEncoding = options?.encoding ?? OutputEncoding.JsonPretty;
+  const jsonIndent = options?.jsonIndent ?? 2;
+  if (options) {
+    let output = "";
+    if (encoding === OutputEncoding.JsonCompact) {
+      output = JSON.stringify(workingDocument);
+    } else if (encoding === OutputEncoding.JsonPretty) {
+      output = JSON.stringify(workingDocument, null, jsonIndent);
+    } else {
+      output = encodeToToon(workingDocument, options?.toonOptions ?? defaultToonOptions);
+    }
+    return { ...base, output, encoding, contentType: encoding.startsWith("json-") ? "application/json" : "text/plain" };
+  }
+  return base;
+}
 
 export const formatPatch = (operations: JsonPatchOperation[], pretty = true) => {
   return pretty ? JSON.stringify(operations, null, 2) : JSON.stringify(operations);

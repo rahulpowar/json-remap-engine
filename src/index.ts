@@ -25,3 +25,12 @@ export {
   decodePointerToken,
   encodePointerToken,
 } from "./path-utils";
+
+export {
+  encodeToToon,
+  defaultToonOptions,
+} from "./toon";
+
+export type { EncodeOptions } from "./toon";
+
+export { OutputEncoding, OutputEncodingDescription } from "./transformer";

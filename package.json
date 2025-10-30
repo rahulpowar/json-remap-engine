@@ -1,6 +1,6 @@
 {
   "name": "json-remap-engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "JSONPath-driven remapping engine that produces JSON Patch operations.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -25,7 +25,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "check": "npm run lint && npm run test"
+    "check": "npm run lint && npm run test",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "keywords": [
     "json",
@@ -34,13 +35,25 @@
     "transform",
     "rules engine"
   ],
-  "author": "",
+  "author": "Rahul Powar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahulpowar/json-remap-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rahulpowar/json-remap-engine/issues"
+  },
+  "homepage": "https://github.com/rahulpowar/json-remap-engine#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "jsonpath-plus": "^10.3.0"
+    "jsonpath-plus": "^10.3.0",
+    "@byjohann/toon": "^0.5.1"
   },
   "devDependencies": {
     "tsup": "^8.0.2",

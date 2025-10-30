@@ -1,12 +1,29 @@
 # json-remap-engine – Specification
 
-_Last updated: 2025-10-10_
+_Last updated: 2025-10-30_
 
 ## Overview
 
 `json-remap-engine` applies a declarative set of rules to a JSON-compatible document. Each rule produces zero or more JSON Patch operations (`remove`, `replace`, `move`) that mutate a cloned copy of the source document. The engine surfaces detailed diagnostics so host applications can render rule-by-rule status, warnings, and errors.
 
 The behaviour matches the Token Tamer implementation and adds a small number of opt-in niceties (literal replacement values, explicit target modes) without breaking compatibility.
+
+### Encoded output: JSON or TOON
+
+`runTransformer` accepts an optional third parameter to control the encoded output stream returned alongside diagnostics:
+
+```ts
+import { OutputEncoding } from "json-remap-engine";
+const res = runTransformer(input, rules, { encoding: OutputEncoding.Toon });
+console.log(res.output); // TOON text
+```
+
+Encodings (self-documenting enum `OutputEncoding`):
+- `OutputEncoding.JsonPretty` – human-friendly JSON (default)
+- `OutputEncoding.JsonCompact` – minified JSON
+- `OutputEncoding.Toon` – uses `@byjohann/toon` with defaults `delimiter: "\t"`, `indent: 2`, `lengthMarker: "#"` (configurable via `toonOptions`).
+
+The `EncodeOptions` type is re-exported from `@byjohann/toon`. Use `defaultToonOptions` for sensible defaults.
 
 ## Rule Model
 
